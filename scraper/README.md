@@ -108,3 +108,24 @@ The checkpoint for this stage is:
 `detail_pages=60`
 
 The script also prints one complete raw record showing all eight keys.
+
+## Stage 4 — Validate Normalized Records
+
+Raw book records are normalized and validated before being stored.
+
+The `price_text` value is preserved exactly as collected, while a numeric `price_gbp` value is derived from it for sorting and comparison.
+
+A Pydantic schema defines the expected shape and types of each finished record. The canonical `product_url` is used as the record identity, and duplicate URLs are removed.
+
+Every record is validated against the schema before being written to `output/books.json`. Records that fail normalization or validation are written to `output/errors.json` together with the reason for failure.
+
+The description field is optional and may contain `null` when the source page does not provide a description.
+
+The output files are overwritten on each run rather than appended to. This makes the scraper idempotent: running it multiple times produces the same set of records instead of creating duplicates.
+
+The checkpoint for this stage is:
+
+* `books.json` contains exactly 60 records.
+* Every `price_gbp` value is numeric.
+* Every `product_url` begins with `https://`.
+* A second run still produces exactly 60 records.
