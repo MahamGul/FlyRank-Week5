@@ -79,3 +79,32 @@ The expected checkpoint is:
 `catalogue_pages=3, discovered=60, unique_urls=60`
 
 A second run should produce the same counts while using the cached catalogue pages instead of requesting them again.
+
+## Stage 3 — Extract Raw Book Records
+
+The scraper now visits each of the 60 book detail pages discovered from the first three catalogue pages.
+
+Each detail page is fetched with the same identifying User-Agent, timeout, HTTP status validation, and minimum 0.5-second delay used for real requests in the previous stages. Detail pages are cached locally so subsequent development runs do not repeatedly request the website.
+
+The raw record contains eight fields:
+
+* `title`
+* `product_url`
+* `price_text`
+* `availability_text`
+* `rating_text`
+* `description`
+* `source_page`
+* `fetched_at`
+
+Selectors are scoped to the product area of each page rather than relying on the first matching element in the entire document.
+
+If a description is absent, the value is stored as `null` rather than being invented.
+
+The `source_page` field records which catalogue page led to the book, while `fetched_at` records when the detail page was originally fetched. These fields provide provenance for each raw record.
+
+The checkpoint for this stage is:
+
+`detail_pages=60`
+
+The script also prints one complete raw record showing all eight keys.
