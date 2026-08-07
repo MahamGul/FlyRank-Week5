@@ -1,0 +1,53 @@
+# Books to Scrape — Responsible Scraping Setup
+
+## Target Classification
+
+### Target site
+
+**Books to Scrape**
+https://books.toscrape.com/
+
+### Why this site?
+
+Books to Scrape is a sandbox website created specifically for people to practise web scraping. The site explains that it is intended for scraping practice, so it is an appropriate and authorized target for this assignment.
+
+This project is limited to this sandbox site and does not target real-world websites.
+
+### How much will be collected?
+
+The scraper will collect data from **only the first 3 catalogue pages**.
+
+This limited scope keeps the number of requests small and is sufficient for demonstrating the scraping workflow.
+
+### What data will be collected?
+
+For each book, the scraper will collect:
+
+* Book title
+* Price
+* Availability
+* Rating
+* Product URL
+
+Only publicly displayed catalogue information relevant to the assignment will be collected.
+
+### Why is this appropriate?
+
+The information is publicly displayed on the Books to Scrape practice website, and the website is specifically designed for learning and testing scraping techniques. The collection is also limited to the first three catalogue pages rather than attempting to crawl the entire site.
+
+## robots.txt Check
+
+I checked the site's robots.txt file at:
+
+`https://books.toscrape.com/robots.txt`
+
+The file was available and was checked before starting the scraper. Its contents were reviewed to understand the site's instructions to automated agents.
+
+## Scraping Principles
+
+* The scraper will remain within the defined three-page scope.
+* Requests will be kept limited and reasonable.
+* No login-protected, private, or sensitive information will be collected.
+* This project is intended only for the Books to Scrape sandbox.
+
+**I will not reuse this code on another site without checking its rules and terms first.**
