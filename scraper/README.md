@@ -63,3 +63,19 @@ On the first run, the HTML response is saved to:
 `cache/catalogue-page-1.html`
 
 During development, subsequent runs use this cached copy instead of requesting the website again. The script reports whether it performed a `FETCH` or received a `CACHE HIT`, along with the response size, without printing the full HTML.
+
+## Stage 2 — Discover Three Catalogue Pages
+
+The scraper parses the saved catalogue HTML using Beautiful Soup and discovers the book links on each catalogue page.
+
+Starting from page 1, the scraper follows the catalogue's own `next` link to page 2 and then page 3. It stops after three catalogue pages as required by the assignment.
+
+Relative book links are converted into absolute URLs using Python's `urljoin()` rather than by manually concatenating strings.
+
+The scraper removes duplicate book URLs using a set. A delay of at least 0.5 seconds is used between real requests to the website. Cached pages do not require a delay because they are read locally.
+
+The expected checkpoint is:
+
+`catalogue_pages=3, discovered=60, unique_urls=60`
+
+A second run should produce the same counts while using the cached catalogue pages instead of requesting them again.
