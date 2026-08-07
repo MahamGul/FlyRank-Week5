@@ -51,3 +51,15 @@ The file was available and was checked before starting the scraper. Its contents
 * This project is intended only for the Books to Scrape sandbox.
 
 **I will not reuse this code on another site without checking its rules and terms first.**
+
+## Stage 1 — Fetch and Cache
+
+The first catalogue page is fetched from Books to Scrape using an identifying User-Agent and a 5-second timeout.
+
+The script checks the HTTP response status before processing the response and accepts only HTTP 200 as a successful fetch.
+
+On the first run, the HTML response is saved to:
+
+`cache/catalogue-page-1.html`
+
+During development, subsequent runs use this cached copy instead of requesting the website again. The script reports whether it performed a `FETCH` or received a `CACHE HIT`, along with the response size, without printing the full HTML.
