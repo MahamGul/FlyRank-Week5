@@ -82,11 +82,13 @@ def save_fetch_times(fetch_times):
 # -----------------------------
 # Fetch + cache
 # -----------------------------
-
-def fetch_page(page_url, cache_file):
+def fetch_page(page_url, cache_file, stats):
 
     fetch_times = load_fetch_times()
 
+    # -------------------------
+    # Use cache if available
+    # -------------------------
     if cache_file.exists():
 
         html = cache_file.read_bytes()
@@ -95,10 +97,15 @@ def fetch_page(page_url, cache_file):
             str(cache_file)
         )
 
+        stats["cache_hits"] += 1
+
         print(f"CACHE HIT: {cache_file.name}")
 
         return html, fetched_at
 
+    # -------------------------
+    # Real request
+    # -------------------------
     request = Request(
         page_url,
         headers={
@@ -106,55 +113,114 @@ def fetch_page(page_url, cache_file):
         }
     )
 
-    try:
+    max_attempts = 2
+    attempt = 1
 
-        with urlopen(
-            request,
-            timeout=TIMEOUT
-        ) as response:
+    while attempt <= max_attempts:
 
-            if response.status != 200:
-                raise RuntimeError(
-                    f"Fetch failed: HTTP {response.status}"
+        try:
+
+            with urlopen(
+                request,
+                timeout=TIMEOUT
+            ) as response:
+
+                status = response.status
+
+                # Only 200 is accepted.
+                if status != 200:
+
+                    if 500 <= status <= 599 and attempt == 1:
+
+                        print(
+                            f"HTTP {status} — retrying once"
+                        )
+
+                        time.sleep(1)
+                        attempt += 1
+                        continue
+
+                    raise RuntimeError(
+                        f"HTTP {status}"
+                    )
+
+                html = response.read()
+
+                fetched_at = utc_now()
+
+                cache_file.parent.mkdir(
+                    parents=True,
+                    exist_ok=True
                 )
 
-            html = response.read()
+                cache_file.write_bytes(html)
 
-    except HTTPError as error:
+                fetch_times[str(cache_file)] = fetched_at
 
-        raise RuntimeError(
-            f"Fetch failed: HTTP {error.code}"
-        )
+                save_fetch_times(fetch_times)
 
-    except URLError as error:
+                stats["pages_fetched"] += 1
 
-        raise RuntimeError(
-            f"Fetch failed: {error.reason}"
-        )
+                print(f"FETCH: {page_url}")
 
-    fetched_at = utc_now()
+                return html, fetched_at
 
-    cache_file.parent.mkdir(
-        parents=True,
-        exist_ok=True
+        except HTTPError as error:
+
+            # 403 and 404 are permanent failures.
+            if error.code in (403, 404):
+
+                raise RuntimeError(
+                    f"HTTP {error.code}"
+                )
+
+            # Retry a 5xx once.
+            if (
+                500 <= error.code <= 599
+                and attempt == 1
+            ):
+
+                print(
+                    f"HTTP {error.code} — retrying once"
+                )
+
+                time.sleep(1)
+
+                attempt += 1
+                continue
+
+            raise RuntimeError(
+                f"HTTP {error.code}"
+            )
+
+        except (TimeoutError, URLError) as error:
+
+            # Retry once for timeout/network failure.
+            if attempt == 1:
+
+                print(
+                    "Request failed — retrying once"
+                )
+
+                time.sleep(1)
+
+                attempt += 1
+                continue
+
+            raise RuntimeError(
+                f"Request failed: {error}"
+            )
+
+    raise RuntimeError(
+        "Request failed after retry"
     )
-
-    cache_file.write_bytes(html)
-
-    fetch_times[str(cache_file)] = fetched_at
-
-    save_fetch_times(fetch_times)
-
-    print(f"FETCH: {page_url}")
-
-    return html, fetched_at
 
 
 # -----------------------------
 # Discover catalogue pages
 # -----------------------------
 
-def discover_catalogue_pages():
+def discover_catalogue_pages(stats):
 
     catalogue_pages = []
 
@@ -178,7 +244,8 @@ def discover_catalogue_pages():
 
         html, _ = fetch_page(
             current_url,
-            cache_file
+            cache_file,
+            stats
         )
 
         soup = BeautifulSoup(
@@ -356,9 +423,10 @@ def extract_raw_record(
 # Extract all books
 # -----------------------------
 
-def extract_all_books(book_urls):
+def extract_all_books(book_urls, stats):
 
     records = []
+    failed_pages = []
 
     for index, (
         product_url,
@@ -372,27 +440,52 @@ def extract_all_books(book_urls):
             product_url
         )
 
-        if (
-            not cache_file.exists()
-            and index > 1
-        ):
-            time.sleep(MIN_DELAY)
+        try:
 
-        html, fetched_at = fetch_page(
-            product_url,
-            cache_file
-        )
+            # Delay only before a real request.
+            if (
+                not cache_file.exists()
+                and index > 1
+            ):
+                time.sleep(MIN_DELAY)
 
-        record = extract_raw_record(
-            product_url,
-            source_page,
-            html,
-            fetched_at
-        )
+            html, fetched_at = fetch_page(
+                product_url,
+                cache_file,
+                stats
+            )
 
-        records.append(record)
+            record = extract_raw_record(
+                product_url,
+                source_page,
+                html,
+                fetched_at
+            )
 
-    return records
+            records.append(record)
+
+        except Exception as error:
+
+            stats["failed_pages"] += 1
+
+            failed_pages.append({
+                "product_url": product_url,
+                "source_page": source_page,
+                "reason": str(error)
+            })
+
+            print(
+                f"FAILED: {product_url}"
+            )
+
+            print(
+                f"Reason: {error}"
+            )
+
+            # Continue with the next book.
+            continue
+
+    return records, failed_pages
 
 
 # -----------------------------
@@ -509,10 +602,66 @@ def save_outputs(
 
 
 # -----------------------------
+# Run report
+# -----------------------------
+
+def save_run_report(
+    start_time,
+    stats,
+    valid_records,
+    errors,
+    failed_pages
+):
+
+    start = datetime.fromisoformat(
+        start_time.replace("Z", "+00:00")
+    )
+
+    end = datetime.now(timezone.utc)
+
+    duration = (
+        end - start
+    ).total_seconds()
+
+    report = {
+        "start_time": start_time,
+        "duration_seconds": duration,
+        "pages_fetched": stats["pages_fetched"],
+        "cache_hits": stats["cache_hits"],
+        "valid_records": len(valid_records),
+        "invalid_records": len(errors),
+        "failed_pages": len(failed_pages)
+    }
+
+    report_file = (
+        OUTPUT_DIR / "run-report.json"
+    )
+
+    report_file.write_text(
+        json.dumps(
+            report,
+            indent=2
+        ),
+        encoding="utf-8"
+    )
+
+    print()
+    print("Run report:")
+    print(
+        json.dumps(
+            report,
+            indent=2
+        )
+    )
+
+
+# -----------------------------
 # Main
 # -----------------------------
 
 def main():
+
+    start_time = utc_now()
 
     CACHE_DIR.mkdir(
         parents=True,
@@ -529,12 +678,33 @@ def main():
         exist_ok=True
     )
 
+    stats = {
+        "pages_fetched": 0,
+        "cache_hits": 0,
+        "failed_pages": 0,
+    }
+
+    # Discover the three catalogue pages.
     catalogue_pages, book_urls = (
-        discover_catalogue_pages()
+        discover_catalogue_pages(stats)
     )
 
-    raw_records = extract_all_books(
-        book_urls
+    # ---------------------------------
+    # TEMPORARY Stage 5 failure test
+    # Remove these two lines after the
+    # checkpoint is confirmed, then run
+    # once more before the final commit.
+    # ---------------------------------
+
+    
+
+    # ---------------------------------
+
+    raw_records, failed_pages = (
+        extract_all_books(
+            book_urls,
+            stats
+        )
     )
 
     valid_records, errors = (
@@ -546,6 +716,14 @@ def main():
     save_outputs(
         valid_records,
         errors
+    )
+
+    save_run_report(
+        start_time,
+        stats,
+        valid_records,
+        errors,
+        failed_pages
     )
 
     print()
@@ -567,11 +745,7 @@ def main():
     )
 
     print(
-        f"Saved: {BOOKS_FILE}"
-    )
-
-    print(
-        f"Saved: {ERRORS_FILE}"
+        f"failed_pages={len(failed_pages)}"
     )
 
 

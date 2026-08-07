@@ -129,3 +129,25 @@ The checkpoint for this stage is:
 * Every `price_gbp` value is numeric.
 * Every `product_url` begins with `https://`.
 * A second run still produces exactly 60 records.
+
+## Stage 5 — Failure Handling and Run Reporting
+
+Each book detail page is processed independently so that a failed page does not stop the rest of the run.
+
+A timeout or HTTP 5xx server error is retried once after a short delay. HTTP 403 and 404 responses are treated as permanent failures and are not retried.
+
+Failed pages are logged and skipped while successful records continue through normalization and validation.
+
+Every run produces `output/run-report.json` containing:
+
+* `start_time`
+* `duration_seconds`
+* `pages_fetched`
+* `cache_hits`
+* `valid_records`
+* `invalid_records`
+* `failed_pages`
+
+For the failure-handling test, one intentionally nonexistent book URL was added to the discovered URL list. The scraper completed the run without crashing, preserved the 60 valid records, and reported one failed page.
+
+The fake URL was used only for local failure testing and was removed from the normal scraper afterward.
